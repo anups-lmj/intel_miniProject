@@ -20,6 +20,7 @@ http://www.kccistc.net/
 #define LED_TEST_PIN 12
 #define LED_BUILTIN_PIN 13
 #define CDS_PIN A0
+#define WATER_LEVEL_PIN A1
 
 #define CMD_SIZE 50
 #define ARR_CNT 5
@@ -33,10 +34,11 @@ http://www.kccistc.net/
 
 char sendBuf[CMD_SIZE];
 bool timerIsrFlag = false;
-char getsensorId[10]="LMJ_SQL";
+char getsensorId[10]="CLT_SQL";
 unsigned long secCount;
 int sensorTime = 0;
 int cds;
+int water_level;
 float humi;
 float temp;
 SoftwareSerial wifiSerial(WIFIRX, WIFITX);
@@ -68,7 +70,11 @@ void loop() {
       cds = map(cds,0,1023,0,100);
       humi = dht.readHumidity();
       temp = dht.readTemperature();
+      water_level = analogRead(WATER_LEVEL_PIN);
+      water_level = map(water_level,0,1023,0,100);
 #ifdef DEBUG
+      Serial.print("water level : ");
+      Serial.print(water_level);
       Serial.print("cds : ");
       Serial.print(cds);
       Serial.print(", temp : ");
@@ -80,7 +86,7 @@ void loop() {
       char humiStr[5];
       dtostrf(humi, 4, 1, humiStr);  //50.0   4:전체자리수,1:소수이하 자리수
       dtostrf(temp, 4, 1, tempStr);  //25.1
-      sprintf(sendBuf,"[%s]SENSOR@%d@%s@%s\n",getsensorId,cds,tempStr,humiStr);
+      sprintf(sendBuf,"[%s]SENSOR@%d@%d@%s@%s\n",getsensorId,cds,tempStr,humiStr,water_level); 
       client.write(sendBuf, strlen(sendBuf));
       client.flush();
       if (!client.connected()) {
