@@ -8,15 +8,15 @@ http://www.kccistc.net/
 //#define DEBUG_WIFI
 #define AP_SSID "embA"
 #define AP_PASS "embA1234"
-#define SERVER_NAME "10.10.141.79"
+#define SERVER_NAME "10.10.141.61"
 #define SERVER_PORT 5000
-#define LOGID "LMJ_ARD"
+#define LOGID "CLT_ARD"
 #define PASSWD "PASSWD"
 
-#define DHT_PIN 4 //dht11
-#define WIFIRX 6  //6:RX-->ESP8266 TX
-#define WIFITX 7  //7:TX -->ESP8266 RX
-#define MOTOR_PIN 11
+#define DHT_PIN 4  //dht11
+#define WIFIRX 6   //6:RX-->ESP8266 TX
+#define WIFITX 7   //7:TX -->ESP8266 RX
+#define MOTOR_PIN 9
 #define LED_TEST_PIN 12
 #define LED_BUILTIN_PIN 13
 #define CDS_PIN A0
@@ -34,13 +34,13 @@ http://www.kccistc.net/
 
 char sendBuf[CMD_SIZE];
 bool timerIsrFlag = false;
-char getsensorId[10]="CLT_SQL";
+char getsensorId[10] = "CLT_SQL";
 unsigned long secCount;
 int sensorTime = 0;
 int cds;
-int water_level;
 float humi;
 float temp;
+int water_level;
 SoftwareSerial wifiSerial(WIFIRX, WIFITX);
 WiFiEspClient client;
 DHT dht(DHT_PIN, DHTTYPE);
@@ -50,10 +50,11 @@ void setup() {
   pinMode(MOTOR_PIN, OUTPUT);
   pinMode(LED_TEST_PIN, OUTPUT);     //D12
   pinMode(LED_BUILTIN_PIN, OUTPUT);  //D13
-  pinMode(CDS_PIN,INPUT);            //A0 CDS
-  Serial.begin(115200);              //DEBUG
+  pinMode(CDS_PIN, INPUT);           //A0 CDS
+  pinMode(WATER_LEVEL_PIN, INPUT);
+  Serial.begin(115200);  //DEBUG
   wifi_Setup();
-  Timer1.initialize(1000000);         //1000000uS ==> 1Sec
+  Timer1.initialize(1000000);        //1000000uS ==> 1Sec
   Timer1.attachInterrupt(timerIsr);  // timerIsr to run every 1 seconds
   dht.begin();
 }
@@ -65,30 +66,47 @@ void loop() {
   }
   if (timerIsrFlag) {
     timerIsrFlag = false;
-    if (!(secCount % atoi(sensorTime))) {
+    if (!(secCount % 1)) {
+      water_level = analogRead(WATER_LEVEL_PIN);
+      // water_level = map(water_level,0,1023,0,100);
       cds = analogRead(CDS_PIN);
-      cds = map(cds,0,1023,0,100);
+      cds = map(cds, 0, 1023, 0, 100);
       humi = dht.readHumidity();
       temp = dht.readTemperature();
-      water_level = analogRead(WATER_LEVEL_PIN);
-      water_level = map(water_level,0,1023,0,100);
+      if (water_level < 500) {
+        Serial.println("MOTOR ON");
+        digitalWrite(MOTOR_PIN, HIGH);
+      }
+      else if(water_level >= 590)
+      {
+        Serial.println("MOTOR OFF");
+        digitalWrite(MOTOR_PIN,LOW);
+      }
 #ifdef DEBUG
-      Serial.print("water level : ");
-      Serial.print(water_level);
       Serial.print("cds : ");
       Serial.print(cds);
       Serial.print(", temp : ");
       Serial.print(temp);
       Serial.print(", humi : ");
-      Serial.println(humi);
+      Serial.print(humi);
+      Serial.print(", water level : ");
+      Serial.println(water_level);
 #endif
-      char tempStr[5];
-      char humiStr[5];
-      dtostrf(humi, 4, 1, humiStr);  //50.0   4:전체자리수,1:소수이하 자리수
-      dtostrf(temp, 4, 1, tempStr);  //25.1
-      sprintf(sendBuf,"[%s]SENSOR@%d@%d@%s@%s\n",getsensorId,cds,tempStr,humiStr,water_level); 
-      client.write(sendBuf, strlen(sendBuf));
-      client.flush();
+      if (!(secCount % atoi(sensorTime))) {
+        char tempStr[5];
+        char humiStr[5];
+        dtostrf(humi, 4, 1, humiStr);  //50.0   4:전체자리수,1:소수이하 자리수
+        dtostrf(temp, 4, 1, tempStr);  //25.1
+        sprintf(sendBuf, "[%s]SENSOR@%d@%s@%s@%d\n", getsensorId, cds, tempStr, humiStr, water_level);
+        client.write(sendBuf, strlen(sendBuf));
+        client.flush();
+      }
+      /*if(!(secCount % 12시간)){
+        LED ON
+      } else if (!(secCount % 24시간)){
+        LED OFF
+      }
+      */
       if (!client.connected()) {
         server_Connect();
       }
@@ -126,31 +144,40 @@ void socketEvent() {
     client.stop();
     server_Connect();
     return;
-  }
+  } else if (!strcmp(pArray[1], "LED")) {
+    if (!strcmp(pArray[2], "ON")) {
+      digitalWrite(LED_BUILTIN_PIN, HIGH);
+    } else if (!strcmp(pArray[2], "OFF")) {
+      digitalWrite(LED_BUILTIN_PIN, LOW);
+    }
+    sprintf(sendBuf, "[%s]%s@%s\n", pArray[0], pArray[1], pArray[2]);
   } else if (!strcmp(pArray[1], "LAMP")) {
     if (!strcmp(pArray[2], "ON")) {
       digitalWrite(LED_TEST_PIN, HIGH);
     } else if (!strcmp(pArray[2], "OFF")) {
       digitalWrite(LED_TEST_PIN, LOW);
     }
-    sprintf(sendBuf, "[LMJ_SQL]SETDB@%s@%s@%s\n", pArray[1], pArray[2],pArray[0]);
+    sprintf(sendBuf, "[LMJ_SQL]SETDB@%s@%s@%s\n", pArray[1], pArray[2], pArray[0]);
   } else if (!strcmp(pArray[1], "GETSTATE")) {
     if (!strcmp(pArray[2], "DEV")) {
       sprintf(sendBuf, "[%s]DEV@%s@%s\n", pArray[0], digitalRead(LED_BUILTIN_PIN) ? "ON" : "OFF", digitalRead(LED_TEST_PIN) ? "ON" : "OFF");
     }
-  }
-  else if (!strcmp(pArray[1], "MOTOR")) {
-    int pwm = atoi(pArray[2]);
+  } else if (!strcmp(pArray[1], "MOTOR")) {
+    /*  int pwm = atoi(pArray[2]);
     pwm = map(pwm,0,100,0,255);
-    analogWrite(MOTOR_PIN, pwm);
+    analogWrite(MOTOR_PIN, pwm);*/
+    if (!strcmp(pArray[2], "ON")) {
+      digitalWrite(MOTOR_PIN, HIGH);
+    } else if (!strcmp(pArray[2], "OFF")) {
+      digitalWrite(MOTOR_PIN, LOW);
+    }
     sprintf(sendBuf, "[%s]%s@%s\n", pArray[0], pArray[1], pArray[2]);
-  }
-  else if (!strcmp(pArray[1], "GETSENSOR")) {
+  } else if (!strcmp(pArray[1], "GETSENSOR")) {
     sensorTime = pArray[2];
-    strcpy(getsensorId,pArray[0]);
+    //strcpy(getsensorId,pArray[0]);
     sprintf(sendBuf, "[%s]%s@%s\n", getsensorId, pArray[1], pArray[2]);
-    
-  }  
+  }
+
   client.write(sendBuf, strlen(sendBuf));
   client.flush();
 
