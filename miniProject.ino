@@ -17,11 +17,12 @@ http://www.kccistc.net/
 #define WIFIRX 6   //6:RX-->ESP8266 TX
 #define WIFITX 7   //7:TX -->ESP8266 RX
 #define MOTOR_PIN 9
-#define LED_TEST_PIN 12
-#define LED_BUILTIN_PIN 13
+#define LED1_PIN 11
+#define LED2_PIN 12
+#define LED3_PIN 13
 #define CDS_PIN A0
 #define WATER_LEVEL_PIN A1
-
+#define ONE_HOUR 3600
 #define CMD_SIZE 50
 #define ARR_CNT 5
 #define DHTTYPE DHT11  //dht11
@@ -34,13 +35,16 @@ http://www.kccistc.net/
 
 char sendBuf[CMD_SIZE];
 bool timerIsrFlag = false;
+bool motorFlag = false;
 char getsensorId[10] = "CLT_SQL";
 unsigned long secCount;
+unsigned long ledCount;
 int sensorTime = 0;
 int cds;
 float humi;
 float temp;
 int water_level;
+unsigned long timeSet = 12;
 SoftwareSerial wifiSerial(WIFIRX, WIFITX);
 WiFiEspClient client;
 DHT dht(DHT_PIN, DHTTYPE);
@@ -48,10 +52,14 @@ DHT dht(DHT_PIN, DHTTYPE);
 void setup() {
   // put your setup code here, to run once:
   pinMode(MOTOR_PIN, OUTPUT);
-  pinMode(LED_TEST_PIN, OUTPUT);     //D12
-  pinMode(LED_BUILTIN_PIN, OUTPUT);  //D13
+  pinMode(LED1_PIN,OUTPUT);
+  pinMode(LED2_PIN, OUTPUT);     //D12
+  pinMode(LED3_PIN, OUTPUT);  //D13
   pinMode(CDS_PIN, INPUT);           //A0 CDS
   pinMode(WATER_LEVEL_PIN, INPUT);
+  digitalWrite(LED1_PIN, HIGH);
+  digitalWrite(LED2_PIN, HIGH);
+  digitalWrite(LED3_PIN, HIGH);
   Serial.begin(115200);  //DEBUG
   wifi_Setup();
   Timer1.initialize(1000000);        //1000000uS ==> 1Sec
@@ -73,14 +81,16 @@ void loop() {
       cds = map(cds, 0, 1023, 0, 100);
       humi = dht.readHumidity();
       temp = dht.readTemperature();
-      if (water_level < 500) {
+      if (!motorFlag && water_level < 530) {
         Serial.println("MOTOR ON");
         digitalWrite(MOTOR_PIN, HIGH);
+        motorFlag = true;
       }
-      else if(water_level >= 590)
+      else if(motorFlag && water_level >= 600)
       {
         Serial.println("MOTOR OFF");
         digitalWrite(MOTOR_PIN,LOW);
+        motorFlag = false;
       }
 #ifdef DEBUG
       Serial.print("cds : ");
@@ -101,12 +111,7 @@ void loop() {
         client.write(sendBuf, strlen(sendBuf));
         client.flush();
       }
-      /*if(!(secCount % 12시간)){
-        LED ON
-      } else if (!(secCount % 24시간)){
-        LED OFF
-      }
-      */
+      
       if (!client.connected()) {
         server_Connect();
       }
@@ -144,31 +149,31 @@ void socketEvent() {
     client.stop();
     server_Connect();
     return;
-  } else if (!strcmp(pArray[1], "LED")) {
-    if (!strcmp(pArray[2], "ON")) {
-      digitalWrite(LED_BUILTIN_PIN, HIGH);
-    } else if (!strcmp(pArray[2], "OFF")) {
-      digitalWrite(LED_BUILTIN_PIN, LOW);
-    }
-    sprintf(sendBuf, "[%s]%s@%s\n", pArray[0], pArray[1], pArray[2]);
   } else if (!strcmp(pArray[1], "LAMP")) {
+    ledCount =0;
     if (!strcmp(pArray[2], "ON")) {
-      digitalWrite(LED_TEST_PIN, HIGH);
+      digitalWrite(LED1_PIN, HIGH);
+      digitalWrite(LED2_PIN, HIGH);
+      digitalWrite(LED3_PIN, HIGH);
     } else if (!strcmp(pArray[2], "OFF")) {
-      digitalWrite(LED_TEST_PIN, LOW);
+      digitalWrite(LED1_PIN, LOW);
+      digitalWrite(LED2_PIN, LOW);
+      digitalWrite(LED3_PIN, LOW);
     }
     sprintf(sendBuf, "[LMJ_SQL]SETDB@%s@%s@%s\n", pArray[1], pArray[2], pArray[0]);
   } else if (!strcmp(pArray[1], "GETSTATE")) {
     if (!strcmp(pArray[2], "DEV")) {
-      sprintf(sendBuf, "[%s]DEV@%s@%s\n", pArray[0], digitalRead(LED_BUILTIN_PIN) ? "ON" : "OFF", digitalRead(LED_TEST_PIN) ? "ON" : "OFF");
+      sprintf(sendBuf, "[%s]DEV@%s@%s\n", pArray[0], digitalRead(LED3_PIN) ? "ON" : "OFF", digitalRead(LED2_PIN) ? "ON" : "OFF");
     }
   } else if (!strcmp(pArray[1], "MOTOR")) {
     /*  int pwm = atoi(pArray[2]);
     pwm = map(pwm,0,100,0,255);
     analogWrite(MOTOR_PIN, pwm);*/
     if (!strcmp(pArray[2], "ON")) {
+      motorFlag = true;
       digitalWrite(MOTOR_PIN, HIGH);
     } else if (!strcmp(pArray[2], "OFF")) {
+      motorFlag = false;
       digitalWrite(MOTOR_PIN, LOW);
     }
     sprintf(sendBuf, "[%s]%s@%s\n", pArray[0], pArray[1], pArray[2]);
@@ -190,6 +195,14 @@ void timerIsr() {
   //  digitalWrite(LED_BUILTIN_PIN,!digitalRead(LED_BUILTIN_PIN));
   timerIsrFlag = true;
   secCount++;
+  ledCount++;
+  if(ledCount >= ONE_HOUR * timeSet)
+  {
+    digitalWrite(LED1_PIN, !digitalRead(LED1_PIN));
+    digitalWrite(LED2_PIN, !digitalRead(LED2_PIN));
+    digitalWrite(LED3_PIN, !digitalRead(LED3_PIN));
+    ledCount=0;
+  }
 }
 void wifi_Setup() {
   wifiSerial.begin(38400);
