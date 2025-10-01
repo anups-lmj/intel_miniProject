@@ -69,4 +69,10 @@
 - **UI/UX 개선** : 빛의 세기, 수위 조절 등 다양한 제어 옵션  
 - **데이터 분석** : 사용자 맞춤 피드백 제공  
 
+## 👨‍💻 제작자 (Authors)
+
+- [김국현](https://github.com/GukHyunE)  
+- [이민재](https://github.com/anups-lmj)
+
+
  
